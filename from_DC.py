@@ -318,3 +318,68 @@ for episode in range(10):
             critic_losses = torch.tensor([])
 
         state = next_state
+
+
+# från claude
+
+
+def gameloopold():
+    if choice == 1:
+        # både actor och critic tränas i samma modell men med olika heads
+        model = ChessModelActorCritic()
+        optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
+
+        # Hyperparameters
+        T_horizon = 2048  # Steps before update
+        K_epochs = 4      # Update epochs
+        gamma = 0.99
+        gae_lambda = 0.95
+        epsilon = 0.2
+
+        actor_losses = torch.tensor([])
+        critic_losses = torch.tensor([])
+        # loop med batch training# Set rollout length
+        rollout_length = 10
+        for episode in range(10):
+            state, info = env.reset()
+            done = False
+            episode_reward = 0
+            step = 0
+            while not done:
+                step += 1
+                action, action_log_prob, entropy = select_action(
+                    actor, state)
+                next_state, reward, terminated, truncated, _ = env.step(
+                    action)
+                episode_reward += reward
+                done = terminated or truncated
+                actor_loss, critic_loss = calculate_losses(critic, action_log_prob,
+                                                           reward, state, next_state, done)
+
+                # Append step loss to the loss batches
+                actor_losses = torch.cat((actor_losses, actor_loss))
+                critic_losses = torch.cat((critic_losses, critic_loss))
+
+                # Remove the entropy bonus from the actor loss
+                actor_loss -= 0.01 * actor_loss
+
+                # If rollout is full, update the networks
+                if len(actor_losses) >= rollout_length:
+                    # Take the batch average loss with .mean()
+                    actor_loss_batch = actor_losses.mean()
+                    critic_loss_batch = critic_losses.mean()
+
+                    # Perform gradient descent
+                    actor_optimizer.zero_grad()
+                    actor_loss_batch.backward()
+                    actor_optimizer.step()
+
+                    critic_optimizer.zero_grad()
+                    critic_loss_batch.backward()
+                    critic_optimizer.step()
+
+                    # Reinitialize the batch losses
+                    actor_losses = torch.tensor([])
+                    critic_losses = torch.tensor([])
+                state = next_state
+            describe_episode(episode, reward, episode_reward, step)
